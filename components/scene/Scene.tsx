@@ -14,6 +14,8 @@ import { dockName } from '@/lib/i18n';
 const HOME_TARGET = new THREE.Vector3(1, 0, -1.5);
 const HOME_POS = new THREE.Vector3(26, 26, 26).add(HOME_TARGET);
 const HOME_ZOOM = 28;
+// fit the yard + building on narrow screens
+const homeZoom = (w: number) => Math.max(9, Math.min(HOME_ZOOM, (HOME_ZOOM * w) / 1400));
 
 // Smoothly follow the simulated position (sim ticks at 10 Hz, render at 60 Hz).
 function useFollow(pos: Vec, heading: number) {
@@ -57,6 +59,7 @@ function Ground() {
   const endDrag = useSim((s) => s.endDrag);
   const clear = useSim((s) => s.clearSelection);
   const t = useT();
+  const narrow = useThree((s) => s.size.width) < 768;
 
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     if (!drag) return;
@@ -101,9 +104,9 @@ function Ground() {
       {YARD_SLOTS.map(([x, z], i) => (
         <group key={i} position={[x, 0.03, z]}>
           <Line points={[[-1.4, 0, -2.7], [1.4, 0, -2.7], [1.4, 0, 2.7], [-1.4, 0, 2.7], [-1.4, 0, -2.7]]} color="#f2c14e" lineWidth={1.5} />
-          <Html position={[0, 0, 3.1]} center transform={false} style={{ pointerEvents: 'none' }}>
+          {!narrow && <Html position={[0, 0, 3.1]} center transform={false} style={{ pointerEvents: 'none' }}>
             <div className="whitespace-nowrap text-[9px] font-semibold tracking-wider text-amber-600/80">{t('yardLbl', { n: i + 1 })}</div>
-          </Html>
+          </Html>}
         </group>
       ))}
       {/* storage outline */}
@@ -254,6 +257,7 @@ function TruckEntity({ truck }: { truck: Truck }) {
   const startDrag = useSim((s) => s.startDrag);
   const controls = useThree((s) => s.controls) as unknown as { enabled: boolean } | null;
   const t = useT();
+  const narrow = useThree((s) => s.size.width) < 768;
   const label = t(truckStateKey(truck));
 
   return (
@@ -281,7 +285,7 @@ function TruckEntity({ truck }: { truck: Truck }) {
           <span className={`rounded px-1 ${selected ? 'bg-white/20' : 'bg-slate-100'}`}>{label}{truck.status === 'working' ? ` ${truck.done}/${truck.total}` : ''}</span>
         </div>
       </Html>
-      {truck.status === 'waiting' && !dragging && !truck.manual && (
+      {truck.status === 'waiting' && !dragging && !truck.manual && !narrow && (
         <Html position={[0, 0.2, 3.2]} center style={{ pointerEvents: 'none' }}>
           <div className="whitespace-nowrap text-[9px] font-medium text-slate-500">{t('dragHint')}</div>
         </Html>
@@ -400,7 +404,7 @@ function CameraRig() {
   const followRef = useRef<Vec | null>(null);
   followRef.current = drivePos;
   const controls = useRef<OrbitControlsImpl>(null);
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const goal = useRef<{ target: THREE.Vector3; pos: THREE.Vector3; zoom: number } | null>(null);
 
   useEffect(() => {
@@ -412,14 +416,18 @@ function CameraRig() {
     let zoom = ortho.zoom;
     switch (cam.kind) {
       case 'zoomIn': zoom = Math.min(90, zoom * 1.25); break;
-      case 'zoomOut': zoom = Math.max(12, zoom / 1.25); break;
+      case 'zoomOut': zoom = Math.max(8, zoom / 1.25); break;
       case 'rotL': offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 6); break;
       case 'rotR': offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 6); break;
-      case 'home': target.copy(HOME_TARGET); offset.copy(HOME_POS).sub(HOME_TARGET); zoom = HOME_ZOOM; break;
-      case 'focus': if (cam.target) { target.set(cam.target[0], 0, cam.target[1]); zoom = Math.max(zoom, 44); } break;
+      case 'home': {
+        // phones: shift the view toward the yard so waiting trucks stay on screen
+        const home = size.width < 768 ? new THREE.Vector3(-4, 0, 2) : HOME_TARGET;
+        target.copy(home); offset.copy(HOME_POS).sub(HOME_TARGET); zoom = homeZoom(size.width); break;
+      }
+      case 'focus': if (cam.target) { target.set(cam.target[0], 0, cam.target[1]); zoom = Math.max(zoom, size.width < 768 ? 26 : 44); } break;
     }
     goal.current = { target, pos: target.clone().add(offset), zoom };
-  }, [cam, camera]);
+  }, [cam, camera, size.width]);
 
   useFrame((_, dt) => {
     const c = controls.current;
@@ -448,8 +456,9 @@ function CameraRig() {
 
   return (
     <OrbitControls ref={controls} target={HOME_TARGET.toArray()} enabled={!dragging} enableDamping makeDefault
-      minZoom={12} maxZoom={90} maxPolarAngle={Math.PI / 2.4} minPolarAngle={Math.PI / 8}
+      minZoom={8} maxZoom={90} maxPolarAngle={Math.PI / 2.4} minPolarAngle={Math.PI / 8}
       mouseButtons={{ LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }}
+      touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE }}
       onStart={() => { goal.current = null; }} />
   );
 }

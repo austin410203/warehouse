@@ -20,6 +20,20 @@ export function useT() {
   return useCallback((key: string, params?: Record<string, string | number | boolean>) => translate(lang, key, params), [lang]);
 }
 const useLang = () => useSim((s) => s.lang);
+
+/** true below Tailwind's md breakpoint (phones, small tablets in portrait) */
+export function useIsMobile() {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const on = () => setM(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return m;
+}
+const dropdownMobile = 'max-md:fixed max-md:inset-x-2 max-md:top-[104px] max-md:w-auto';
 const whName = (w: World, lang: Lang) => (lang === 'zh' && w.warehouse.nameZh ? w.warehouse.nameZh : w.warehouse.name);
 const etaMin = (sim: number) => Math.max(0, Math.round((sim * 10) / 60));
 
@@ -60,7 +74,7 @@ function SearchBox() {
   }, [q, world, t]);
   const go = (r: (typeof results)[number]) => { select(r.type, r.id, true); setQ(''); setOpen(false); };
   return (
-    <div className="relative w-full max-w-sm">
+    <div className="relative hidden w-full max-w-sm md:block">
       <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
         <Search className="h-4 w-4 text-slate-400" />
         <input value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onKeyDown={(e) => e.key === 'Enter' && results[0] && go(results[0])}
@@ -105,12 +119,12 @@ function EventBell() {
   const unread = events.filter((e) => e.id > seen && e.kind !== 'info').length;
   return (
     <div className="relative">
-      <button onClick={() => { setOpen(!open); setSeen(events[0]?.id ?? 0); }} className="relative rounded-xl p-2 hover:bg-slate-100">
+      <button onClick={() => { setOpen(!open); setSeen(events[0]?.id ?? 0); }} className="relative rounded-xl p-1.5 hover:bg-slate-100 md:p-2">
         <Bell className="h-5 w-5 text-slate-600" />
         {unread > 0 && <span className="absolute right-1 top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[10px] font-bold leading-4 text-white">{unread}</span>}
       </button>
       {open && (
-        <div className={clsx(card, 'absolute right-0 top-12 z-50 max-h-96 w-80 overflow-auto p-2')}>
+        <div className={clsx(card, 'absolute right-0 top-12 z-50 max-h-96 w-80 overflow-auto p-2', dropdownMobile)}>
           <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">{t('eventLog')}</div>
           {events.map((e) => <EventRow key={e.id} e={e} onClick={() => e.ref && select(e.ref.type, e.ref.id, true)} />)}
         </div>
@@ -135,13 +149,13 @@ function WarehouseSwitcher() {
         className="flex items-center gap-2 rounded-xl px-2 py-1 text-left ring-1 ring-slate-200 hover:bg-slate-50">
         <span className="whitespace-nowrap rounded-md bg-[#2f6bff] px-1.5 py-1 text-xs font-bold text-white">{w.warehouse.id}</span>
         <div className="leading-tight">
-          <div className="max-w-[180px] truncate text-sm font-semibold text-slate-800">{whName(w, lang)}</div>
-          <div className="text-[11px] text-slate-500">{t('full', { pct, docked, docks: w.docks.length })}</div>
+          <div className="max-w-[110px] truncate text-sm font-semibold text-slate-800 md:max-w-[180px]">{whName(w, lang)}</div>
+          <div className="hidden whitespace-nowrap text-[11px] text-slate-500 md:block">{t('full', { pct, docked, docks: w.docks.length })}</div>
         </div>
         <ChevronDown className="h-4 w-4 text-slate-400" />
       </button>
       {open && (
-        <div className={clsx(card, 'absolute right-0 top-14 z-50 w-80 p-1')}>
+        <div className={clsx(card, 'absolute right-0 top-14 z-50 w-80 p-1', dropdownMobile)}>
           <div className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">{t('switchWarehouse')}</div>
           {Object.values(worlds).map((x) => {
             const u = Math.round((x.docks.filter((d) => d.status === 'occupied').length / x.docks.length) * 100);
@@ -179,31 +193,31 @@ export function TopBar() {
   const t = useT();
   const activeOrders = w.shipments.filter((s) => s.completedAt === null).length;
   return (
-    <header className="pointer-events-auto relative z-30 flex items-center gap-2.5 border-b border-slate-200/70 bg-white/90 px-4 py-2.5 backdrop-blur">
+    <header className="pointer-events-auto relative z-30 flex flex-wrap items-center gap-2 border-b border-slate-200/70 bg-white/90 px-2 py-2 backdrop-blur md:flex-nowrap md:gap-2.5 md:px-4 md:py-2.5">
       <div className="flex items-center gap-2 pr-2">
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[#4f86ff] to-[#1f4fd6] text-white shadow"><Boxes className="h-5 w-5" /></div>
-        <span className="text-xl font-bold tracking-tight text-slate-900">WareTrack</span>
+        <span className="hidden text-xl font-bold tracking-tight text-slate-900 sm:inline">WareTrack</span>
       </div>
       <SearchBox />
-      <button onClick={() => setOrdersOpen(true)} className="flex items-center gap-1.5 rounded-xl bg-[#2f6bff] px-3 py-2 text-sm font-semibold text-white shadow hover:bg-[#1f4fd6]">
-        <ClipboardList className="h-4 w-4" /> {t('orders')} <span className="rounded-md bg-white/20 px-1.5 text-xs">{activeOrders}</span>
+      <button onClick={() => setOrdersOpen(true)} className="flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#2f6bff] px-2.5 py-2 text-sm font-semibold text-white shadow hover:bg-[#1f4fd6] md:px-3">
+        <ClipboardList className="h-4 w-4" /> <span className="hidden sm:inline">{t('orders')}</span> <span className="rounded-md bg-white/20 px-1.5 text-xs">{activeOrders}</span>
       </button>
       <div className="ml-auto"><WarehouseSwitcher /></div>
       <div className="flex items-center gap-0.5 rounded-xl bg-slate-100 p-1">
-        <button title={t('pause')} onClick={() => setSpeed(0)} className={clsx('rounded-lg p-1.5', speed === 0 ? 'bg-white text-[#1f4fd6] shadow' : 'text-slate-500')}><Pause className="h-3.5 w-3.5" /></button>
+        <button title={t('pause')} onClick={() => setSpeed(0)} className={clsx('rounded-lg p-1 md:p-1.5', speed === 0 ? 'bg-white text-[#1f4fd6] shadow' : 'text-slate-500')}><Pause className="h-3.5 w-3.5" /></button>
         {([1, 4, 8] as const).map((s) => (
-          <button key={s} onClick={() => setSpeed(s)} className={clsx('rounded-lg px-2 py-1 text-xs font-bold', speed === s ? 'bg-white text-[#1f4fd6] shadow' : 'text-slate-500')}>{s}x</button>
+          <button key={s} onClick={() => setSpeed(s)} className={clsx('rounded-lg px-1.5 py-1 text-xs font-bold md:px-2', speed === s ? 'bg-white text-[#1f4fd6] shadow' : 'text-slate-500')}>{s}x</button>
         ))}
       </div>
-      <div className={clsx('flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-semibold', mode === 'db' ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-700')}>
+      <div className={clsx('flex items-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-1.5 text-sm font-semibold md:px-3', mode === 'db' ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-700')}>
         <span className={clsx('h-2 w-2 rounded-full', speed === 0 ? 'bg-slate-400' : 'animate-pulse bg-emerald-500')} />
-        {t(mode === 'db' ? 'live' : 'demo')} {fmtClock(toClock(w.t))}
+        <span className="hidden lg:inline">{t(mode === 'db' ? 'live' : 'demo')}</span> {fmtClock(toClock(w.t))}
       </div>
       <details className="relative">
-        <summary className="flex cursor-pointer list-none items-center gap-1 whitespace-nowrap rounded-xl px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">
-          <Gauge className="h-4 w-4" /> {t('sim')} <ChevronDown className="h-3 w-3" />
+        <summary className="flex cursor-pointer list-none items-center gap-1 whitespace-nowrap rounded-xl px-1.5 py-1.5 md:px-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">
+          <Gauge className="h-4 w-4" /> <span className="hidden lg:inline">{t('sim')}</span> <ChevronDown className="h-3 w-3" />
         </summary>
-        <div className={clsx(card, 'absolute right-0 top-10 z-50 w-60 space-y-1 p-3 text-sm')}>
+        <div className={clsx(card, 'absolute right-0 top-10 z-50 w-60 space-y-1 p-3 text-sm', dropdownMobile)}>
           {(['autoSpawn', 'autoDock', 'autoForklift', 'randomEvents'] as const).map((k) => (
             <label key={k} className="flex cursor-pointer items-center justify-between rounded-lg px-1 py-1 hover:bg-slate-50">
               <span className="text-slate-700">{t(k)}</span>
@@ -218,11 +232,11 @@ export function TopBar() {
       </details>
       <button onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')} title="中文 / English"
         className="flex items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100">
-        <Languages className="h-4 w-4" />
+        <Languages className="hidden h-4 w-4 md:block" />
         <span className={lang === 'zh' ? 'text-[#1f4fd6]' : 'text-slate-400'}>中</span>/<span className={lang === 'en' ? 'text-[#1f4fd6]' : 'text-slate-400'}>EN</span>
       </button>
       <EventBell />
-      <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
+      <div className="hidden items-center gap-2 border-l border-slate-200 pl-3 md:flex">
         <div className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-[#4f86ff] to-[#1f4fd6] text-sm font-bold text-white">AH</div>
         <div className="hidden leading-tight xl:block">
           <div className="whitespace-nowrap text-sm font-semibold text-slate-800">{t('managerName')}</div>
@@ -237,15 +251,15 @@ export function TopBar() {
 
 function Kpi({ icon, title, value, delta, sub, good = true }: { icon: React.ReactNode; title: string; value: string; delta?: string; sub: string; good?: boolean }) {
   return (
-    <div className={clsx(card, 'flex min-w-[200px] items-center gap-3 px-4 py-3')}>
-      <div className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-[#2f6bff]">{icon}</div>
+    <div className={clsx(card, 'flex shrink-0 items-center gap-2 px-3 py-2 md:min-w-[200px] md:gap-3 md:px-4 md:py-3')}>
+      <div className="hidden h-11 w-11 place-items-center rounded-xl bg-blue-50 text-[#2f6bff] md:grid">{icon}</div>
       <div>
-        <div className="text-xs font-medium text-slate-500">{title}</div>
+        <div className="whitespace-nowrap text-[11px] font-medium text-slate-500 md:text-xs">{title}</div>
         <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold tabular-nums text-slate-900">{value}</span>
+          <span className="text-lg font-bold tabular-nums text-slate-900 md:text-2xl">{value}</span>
           {delta && <span className={clsx('text-xs font-semibold', good ? 'text-emerald-600' : 'text-red-500')}>{delta}</span>}
         </div>
-        <div className="text-[11px] text-slate-400">{sub}</div>
+        <div className="hidden whitespace-nowrap text-[11px] text-slate-400 md:block">{sub}</div>
       </div>
     </div>
   );
@@ -260,7 +274,7 @@ export function KpiRow() {
   const util = (w.docks.filter((d) => d.status === 'occupied').length / w.docks.length) * 100;
   const d = w.stock - w.stockStart;
   return (
-    <div className="pointer-events-auto flex flex-wrap gap-3">
+    <div className="pointer-events-auto flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:gap-3 md:overflow-visible md:pb-0">
       <Kpi icon={<Package className="h-5 w-5" />} title={t('kpiStock')} value={String(w.stock)} delta={`${d >= 0 ? '↑ +' : '↓ '}${d}`} good={d >= 0} sub={t('kpiStockSub', { wh: w.warehouse.id })} />
       <Kpi icon={<TruckIcon className="h-5 w-5" />} title={t('kpiTrucks')} value={String(onSite)} sub={t('kpiTrucksSub', { inb: inbound, route: w.trucks.filter((x) => x.status === 'transit').length })} />
       <Kpi icon={<Clock className="h-5 w-5" />} title={t('kpiOnTime')} value={`${ontime.toFixed(1)}%`} sub={t('kpiOnTimeSub', { a: w.onTimeCount, b: w.completed })} good={ontime >= 95} delta={t(ontime >= 95 ? 'onTarget' : 'belowTarget')} />
@@ -445,7 +459,7 @@ function ShipmentDetail({ s, w }: { s: Shipment; w: World }) {
   );
 }
 
-export function DetailPanel() {
+export function DetailPanel({ className }: { className?: string }) {
   const sel = useSim((s) => s.selected);
   const w = useSim((s) => s.world);
   const clear = useSim((s) => s.clearSelection);
@@ -473,7 +487,7 @@ export function DetailPanel() {
   }
   const pos = positionOf(w, sel.type, sel.id);
   return (
-    <aside className={clsx(card, 'pointer-events-auto max-h-[calc(100vh-430px)] min-h-[200px] w-[360px] overflow-auto p-4')}>
+    <aside className={clsx(card, 'pointer-events-auto overflow-auto p-4', className ?? 'max-h-[calc(100vh-430px)] min-h-[200px] w-[360px]')}>
       <div className="mb-3 flex items-start gap-3 border-b border-slate-100 pb-3">
         <div className="grid h-12 w-12 place-items-center rounded-xl bg-blue-50 text-[#2f6bff]">{icon}</div>
         <div className="min-w-0 flex-1">
@@ -493,7 +507,7 @@ export function DetailPanel() {
 
 // ───────────────────────── Shipment timeline ─────────────────────────
 
-export function ShipmentTimeline() {
+export function ShipmentTimeline({ compact = false }: { compact?: boolean }) {
   const w = useSim((s) => s.world);
   const sel = useSim((s) => s.selected);
   const select = useSim((s) => s.select);
@@ -511,13 +525,13 @@ export function ShipmentTimeline() {
   const n = ship.stages.length - 1;
   const frac = Math.min(cur, n) / n;
   return (
-    <div className={clsx(card, 'pointer-events-auto flex items-stretch gap-4 p-4')}>
-      <div className="flex-1">
+    <div className={clsx(card, 'pointer-events-auto flex items-stretch gap-4', compact ? 'p-3' : 'p-4')}>
+      <div className="min-w-0 flex-1">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-base font-bold text-slate-900"><TruckIcon className="h-5 w-5 text-[#2f6bff]" /> {t('shipmentTracking')}</div>
           <div className="text-xs text-slate-500">{ship.truckId} · {truck?.carrier ?? 'WareTrack'}</div>
         </div>
-        <div className="relative flex justify-between px-4">
+        <div className={clsx('relative flex justify-between', compact ? 'px-0' : 'px-4')}>
           <div className="absolute left-10 right-10 top-4 h-1 rounded bg-slate-200" />
           <div className="absolute left-10 top-4 h-1 rounded bg-[#2f6bff] transition-all duration-700" style={{ width: `calc(${frac * 100}% - ${frac * 80}px)` }} />
           {ship.stages.map((s, i) => {
@@ -526,19 +540,19 @@ export function ShipmentTimeline() {
             const isCur = i === cur;
             const label = isCur && truck && truck.status === 'working' ? `${t(s.label)} ${truck.done}/${truck.total}` : t(s.label);
             return (
-              <div key={s.label} className="relative z-10 flex w-24 flex-col items-center text-center">
+              <div key={s.label} className={clsx('relative z-10 flex flex-col items-center text-center', compact ? 'w-14' : 'w-24')}>
                 <div className={clsx('grid h-9 w-9 place-items-center rounded-full ring-4 ring-white transition',
                   done ? 'bg-[#2f6bff] text-white' : isCur ? 'animate-pulse bg-[#2f6bff] text-white shadow-[0_0_0_6px_rgba(47,107,255,0.18)]' : 'bg-slate-200 text-slate-400')}>
                   {done && i === n ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
                 </div>
-                <div className="mt-2 text-xs font-semibold text-slate-700">{label}</div>
+                <div className={clsx('mt-2 font-semibold text-slate-700', compact ? 'text-[10px] leading-tight' : 'text-xs')}>{label}</div>
                 <div className="text-[10px] text-slate-400">{done ? fmtClock(s.clock!) : isCur ? t('etaAt', { t: fmtClock(toClock(ship.dueAt)) }) : '—'}</div>
               </div>
             );
           })}
         </div>
       </div>
-      <button onClick={() => select('shipment', ship.id)} className="flex w-60 items-center gap-3 rounded-xl bg-slate-50 p-3 text-left ring-1 ring-slate-200 hover:bg-blue-50">
+      {!compact && <button onClick={() => select('shipment', ship.id)} className="flex w-60 items-center gap-3 rounded-xl bg-slate-50 p-3 text-left ring-1 ring-slate-200 hover:bg-blue-50">
         <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white text-[#2f6bff] ring-1 ring-slate-200"><TruckIcon className="h-6 w-6" /></div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-bold text-slate-900">#{ship.id}</div>
@@ -547,14 +561,14 @@ export function ShipmentTimeline() {
           <div className="mt-1 truncate text-[11px] text-slate-500">{ship.customer}</div>
         </div>
         <ChevronRight className="h-4 w-4 text-slate-400" />
-      </button>
+      </button>}
     </div>
   );
 }
 
 // ───────────────────────── Dock list (HTML drag & drop) ─────────────────────────
 
-export function DockList() {
+export function DockList({ className }: { className?: string }) {
   const w = useSim((s) => s.world);
   const select = useSim((s) => s.select);
   const assign = useSim((s) => s.assign);
@@ -565,7 +579,7 @@ export function DockList() {
   const busyF = w.forklifts.filter((f) => f.status !== 'idle').length;
   const occupied = w.docks.filter((d) => d.status === 'occupied').length;
   return (
-    <div className={clsx(card, 'pointer-events-auto w-[440px] p-3')}>
+    <div className={clsx(card, 'pointer-events-auto p-3', className ?? 'w-[440px]')}>
       <div className="mb-2 flex items-center gap-1">
         {([['docks', 'docksTab', `${occupied}/${w.docks.length}`], ['forklifts', 'forkliftsTab', `${busyF}/${w.forklifts.length}`], ['trucks', 'trucksTab', `${w.trucks.length}`]] as const).map(([k, l, n]) => (
           <button key={k} onClick={() => setTab(k)} className={clsx('rounded-lg px-3 py-1.5 text-sm font-semibold', tab === k ? 'bg-white text-slate-900 shadow ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700')}>
@@ -636,7 +650,7 @@ function NewOrderForm({ onDone }: { onDone: () => void }) {
     onDone();
   };
   return (
-    <form onSubmit={submit} className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+    <form onSubmit={submit} className="grid grid-cols-1 gap-3 sm:grid-cols-2 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
       <label className="text-xs font-semibold text-slate-600">{t('fWarehouse')}
         <select value={f.wh} onChange={(e) => set('wh', e.target.value)} className={clsx(input, 'mt-1')}>
           {Object.values(worlds).map((w) => <option key={w.warehouse.id} value={w.warehouse.id}>{w.warehouse.id} · {whName(w, lang)}</option>)}
@@ -659,7 +673,7 @@ function NewOrderForm({ onDone }: { onDone: () => void }) {
       <label className="text-xs font-semibold text-slate-600">{t('fDue')}
         <input value={f.due} onChange={(e) => set('due', e.target.value)} className={clsx(input, 'mt-1')} placeholder="10:30" />
       </label>
-      <label className="col-span-2 text-xs font-semibold text-slate-600">{t('fDestination')}
+      <label className="text-xs font-semibold text-slate-600 sm:col-span-2">{t('fDestination')}
         <input value={f.destination} onChange={(e) => set('destination', e.target.value)} className={clsx(input, 'mt-1')} />
       </label>
       <label className="flex items-center gap-2 text-sm font-semibold text-red-600">
@@ -702,7 +716,7 @@ function ImportBox() {
         <button onClick={downloadTemplate} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50">
           <Download className="h-4 w-4" /> {t('template')}
         </button>
-        <label className="ml-auto flex items-center gap-2 text-xs text-slate-600">
+        <label className="flex w-full items-center gap-2 text-xs text-slate-600 md:ml-auto md:w-auto">
           <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} className="accent-emerald-600" /> {t('replaceOrders')}
         </label>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
@@ -728,18 +742,20 @@ export function OrdersPanel() {
     .filter((s) => (filter === 'all' ? true : filter === 'active' ? s.completedAt === null : s.completedAt !== null))
     .sort((a, b) => a.dueAt - b.dueAt);
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-slate-900/30 p-6 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
-      <div className={clsx(card, 'flex max-h-full w-full max-w-4xl flex-col gap-3 overflow-hidden p-5')}>
+    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-slate-900/30 p-0 backdrop-blur-sm md:p-6" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
+      <div className={clsx(card, 'flex h-full w-full max-w-4xl flex-col gap-3 overflow-hidden rounded-none p-3 md:h-auto md:max-h-full md:rounded-2xl md:p-5')}>
         <div className="flex items-center gap-3">
           <ClipboardList className="h-6 w-6 text-[#2f6bff]" />
-          <h2 className="text-lg font-bold text-slate-900">{t('ordersTitle', { wh: `${w.warehouse.id} ${whName(w, lang)}` })}</h2>
-          <button onClick={() => setAdding((v) => !v)} className="ml-auto flex items-center gap-1.5 rounded-lg bg-[#2f6bff] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#1f4fd6]">
-            <Plus className="h-4 w-4" /> {t('newOrder')}
+          <h2 className="min-w-0 truncate text-base font-bold text-slate-900 md:text-lg">{t('ordersTitle', { wh: `${w.warehouse.id} ${whName(w, lang)}` })}</h2>
+          <button onClick={() => setAdding((v) => !v)} className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#2f6bff] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#1f4fd6]">
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">{t('newOrder')}</span>
           </button>
           <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 ring-1 ring-slate-200 hover:bg-slate-50"><X className="h-4 w-4" /></button>
         </div>
-        {adding && <NewOrderForm onDone={() => setAdding(false)} />}
-        <ImportBox />
+        <div className="max-h-[45vh] shrink-0 space-y-3 overflow-auto md:max-h-none">
+          {adding && <NewOrderForm onDone={() => setAdding(false)} />}
+          <ImportBox />
+        </div>
         <div className="flex gap-1">
           {(['active', 'completed', 'all'] as const).map((k) => (
             <button key={k} onClick={() => setFilter(k)} className={clsx('rounded-lg px-3 py-1 text-sm font-semibold', filter === k ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100')}>
@@ -748,7 +764,7 @@ export function OrdersPanel() {
           ))}
         </div>
         <div className="min-h-0 flex-1 overflow-auto rounded-xl ring-1 ring-slate-200">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
               <tr>
                 {['colOrder', 'colType', 'colCustomer', 'colPallets', 'colDue', 'colTruck', 'colStatus'].map((h) => <th key={h} className="px-3 py-2 font-semibold">{t(h)}</th>)}
@@ -833,12 +849,12 @@ export function DriveController() {
   const hold = (k: 'throttle' | 'steer', v: number) => ({
     onPointerDown: () => { pad[k] = v; }, onPointerUp: () => { pad[k] = 0; }, onPointerLeave: () => { pad[k] = 0; },
   });
-  const btn = 'grid h-11 w-11 place-items-center rounded-xl bg-white text-slate-700 shadow ring-1 ring-slate-200 active:bg-violet-100 select-none touch-none';
+  const btn = 'grid h-14 w-14 md:h-11 md:w-11 place-items-center rounded-xl bg-white text-slate-700 shadow ring-1 ring-slate-200 active:bg-violet-100 select-none touch-none';
   return (
-    <div className="pointer-events-auto absolute bottom-[200px] left-1/2 z-30 flex -translate-x-1/2 items-end gap-4">
-      <div className={clsx(card, 'max-w-sm px-4 py-3')}>
+    <div className="pointer-events-auto absolute inset-x-2 bottom-3 z-30 flex items-end justify-between gap-3 md:inset-x-auto md:bottom-[200px] md:left-1/2 md:-translate-x-1/2 md:justify-start md:gap-4">
+      <div className={clsx(card, 'min-w-0 max-w-sm px-3 py-2 md:px-4 md:py-3')}>
         <div className="flex items-center gap-2 text-sm font-bold text-violet-700"><Gamepad2 className="h-4 w-4" /> {t('driving', { truck: driving })}</div>
-        <p className="mt-1 text-[11px] leading-snug text-slate-500">{t('driveHelp')}</p>
+        <p className="mt-1 hidden text-[11px] leading-snug text-slate-500 md:block">{t('driveHelp')}</p>
         <button onClick={stopDriving} className="mt-2 w-full rounded-lg bg-violet-600 py-1.5 text-sm font-semibold text-white hover:bg-violet-700">{t('stopDrive')} (Esc)</button>
       </div>
       <div className="grid grid-cols-3 gap-1.5">

@@ -62,7 +62,7 @@ const en: Dict = {
   all: 'All',
   // scene
   yardLbl: 'YARD {n}', dragHint: 'drag to a dock ↗', storageLbl: 'STORAGE · {n} PALLETS', faultLbl: '⚠ FAULT',
-  paused: 'Simulation paused — resume', loading3d: 'Loading 3D scene…',
+  navMap: 'Map', paused: 'Simulation paused — resume', loading3d: 'Loading 3D scene…',
   // events
   shiftStart: 'Shift started · Demo simulation running',
   assigned: '{truck} assigned to {dock}', assignedShort: '{truck} → {dock}',
@@ -131,7 +131,7 @@ const zh: Dict = {
   src_seed: '初始', src_auto: '自動', src_manual: '手動', src_excel: 'Excel', src_rush: '急單',
   all: '全部',
   yardLbl: '等候區 {n}', dragHint: '拖曳到碼頭 ↗', storageLbl: '儲區 · {n} 板', faultLbl: '⚠ 故障',
-  paused: '模擬已暫停 — 繼續', loading3d: '載入 3D 場景中…',
+  navMap: '地圖', paused: '模擬已暫停 — 繼續', loading3d: '載入 3D 場景中…',
   shiftStart: '班次開始 · 模擬運行中',
   assigned: '{truck} 已指派至 {dock}', assignedShort: '{truck} → {dock}',
   forkliftPinned: '{f} 專責服務 {truck}', forkliftAuto: '{f} 恢復自動調度', forkliftUpdated: '堆高機已更新',

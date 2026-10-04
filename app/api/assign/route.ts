@@ -11,10 +11,10 @@ export async function POST(req: Request) {
   if (!db) return dbMissing();
   const body = await req.json().catch(() => ({}));
   const res = await mutateWorld(db, (w) => {
-    if (body.forkliftId) { pinForklift(w, body.forkliftId, body.truckId ?? null); return { ok: true, msg: 'Forklift updated' }; }
-    if (body.repairDockId) { repairDock(w, body.repairDockId); return { ok: true, msg: 'Maintenance dispatched' }; }
+    if (body.forkliftId) { pinForklift(w, body.forkliftId, body.truckId ?? null); return { ok: true, code: 'forkliftUpdated' }; }
+    if (body.repairDockId) { repairDock(w, body.repairDockId); return { ok: true, code: 'repairDispatched' }; }
     if (body.truckId && body.dockId) return assignTruckToDock(w, body.truckId, body.dockId);
-    return { ok: false, msg: 'Bad request' };
+    return { ok: false, code: 'errBadRequest' };
   });
   if (!res) return Response.json({ ok: false, msg: 'Conflict or no data, retry' }, { status: 409 });
   return Response.json(res, { status: res.ok ? 200 : 400 });

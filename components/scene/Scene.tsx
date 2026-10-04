@@ -8,6 +8,8 @@ import { useSim } from '@/lib/store';
 import { STORAGE_COLS, STORAGE_ROWS, WALL_Z, YARD_SLOTS, storageCell } from '@/lib/sim/layout';
 import type { Dock, Forklift, Truck, Vec } from '@/lib/sim/types';
 import { ForkliftModel, Pallet, Tree, TruckModel } from './models';
+import { truckStateKey, useT } from '@/components/ui/Hud';
+import { dockName } from '@/lib/i18n';
 
 const HOME_TARGET = new THREE.Vector3(1, 0, -1.5);
 const HOME_POS = new THREE.Vector3(26, 26, 26).add(HOME_TARGET);
@@ -54,6 +56,7 @@ function Ground() {
   const updateDrag = useSim((s) => s.updateDrag);
   const endDrag = useSim((s) => s.endDrag);
   const clear = useSim((s) => s.clearSelection);
+  const t = useT();
 
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     if (!drag) return;
@@ -99,7 +102,7 @@ function Ground() {
         <group key={i} position={[x, 0.03, z]}>
           <Line points={[[-1.4, 0, -2.7], [1.4, 0, -2.7], [1.4, 0, 2.7], [-1.4, 0, 2.7], [-1.4, 0, -2.7]]} color="#f2c14e" lineWidth={1.5} />
           <Html position={[0, 0, 3.1]} center transform={false} style={{ pointerEvents: 'none' }}>
-            <div className="text-[9px] font-semibold text-amber-600/80 tracking-wider">YARD {i + 1}</div>
+            <div className="whitespace-nowrap text-[9px] font-semibold tracking-wider text-amber-600/80">{t('yardLbl', { n: i + 1 })}</div>
           </Html>
         </group>
       ))}
@@ -124,6 +127,7 @@ function Ground() {
 }
 
 function Building() {
+  const id = useSim((s) => s.world.warehouse.id);
   return (
     <group>
       <mesh position={[0, 3.2, WALL_Z - 6]} castShadow receiveShadow>
@@ -153,7 +157,7 @@ function Building() {
           <meshBasicMaterial color="#ffffff" />
         </mesh>
         <Html position={[0, 0, 0.02]} center transform scale={0.5} style={{ pointerEvents: 'none' }}>
-          <div className="font-bold text-[#1f4fd6] text-[28px] whitespace-nowrap">▣ WareTrack · WH-04</div>
+          <div className="font-bold text-[#1f4fd6] text-[28px] whitespace-nowrap">▣ WareTrack · {id}</div>
         </Html>
       </group>
     </group>
@@ -169,6 +173,8 @@ function DockDoor({ dock }: { dock: Dock }) {
   const select = useSim((s) => s.select);
   const endDrag = useSim((s) => s.endDrag);
   const updateDrag = useSim((s) => s.updateDrag);
+  const lang = useSim((s) => s.lang);
+  const t = useT();
 
   const compatible = dragTruck ? (dragTruck.kind === 'inbound') === (dock.kind === 'in') && dock.status === 'available' : false;
   const hover = drag?.hoverDock === dock.id;
@@ -194,8 +200,8 @@ function DockDoor({ dock }: { dock: Dock }) {
           </group>
         )}
         <Html position={[0, 4.25, 0.1]} center style={{ pointerEvents: 'none' }}>
-          <div className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${dock.status === 'fault' ? 'bg-red-500' : 'bg-[#1f4fd6]'}`}>
-            {dock.name}
+          <div className={`whitespace-nowrap px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${dock.status === 'fault' ? 'bg-red-500' : 'bg-[#1f4fd6]'}`}>
+            {dockName(lang, dock.name)}
           </div>
         </Html>
       </group>
@@ -211,7 +217,7 @@ function DockDoor({ dock }: { dock: Dock }) {
         color={selected ? '#1f4fd6' : '#f2c14e'} lineWidth={selected ? 3 : 1.5} />
       {dock.status === 'fault' && (
         <Html position={[dock.pos[0], 0.8, dock.pos[1] + 1]} center style={{ pointerEvents: 'none' }}>
-          <div className="animate-pulse px-2 py-1 rounded-full bg-red-500 text-white text-[10px] font-bold shadow">⚠ FAULT</div>
+          <div className="animate-pulse px-2 py-1 rounded-full bg-red-500 text-white text-[10px] font-bold shadow">{t('faultLbl')}</div>
         </Html>
       )}
     </group>
@@ -239,9 +245,6 @@ function SelectionBox({ size, y = 0 }: { size: [number, number, number]; y?: num
   );
 }
 
-const statusLabel: Record<Truck['status'], string> = {
-  transit: 'In transit', arriving: 'Arriving', waiting: 'Waiting', docking: 'Docking', working: '', departing: 'Departing', departed: 'Departed',
-};
 
 function TruckEntity({ truck }: { truck: Truck }) {
   const ref = useFollow(truck.pos, truck.heading);
@@ -250,30 +253,37 @@ function TruckEntity({ truck }: { truck: Truck }) {
   const select = useSim((s) => s.select);
   const startDrag = useSim((s) => s.startDrag);
   const controls = useThree((s) => s.controls) as unknown as { enabled: boolean } | null;
-  const label = truck.status === 'working' ? (truck.kind === 'inbound' ? 'Unloading' : 'Loading') : statusLabel[truck.status];
+  const t = useT();
+  const label = t(truckStateKey(truck));
 
   return (
     <group ref={ref}>
       <group
         onClick={(e) => { e.stopPropagation(); select('truck', truck.id); }}
-        onPointerDown={(e) => { if (truck.status === 'waiting') { e.stopPropagation(); if (controls) controls.enabled = false; startDrag(truck.id); } }}
-        onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = truck.status === 'waiting' ? 'grab' : 'pointer'; }}
+        onPointerDown={(e) => { if (truck.status === 'waiting' && !truck.manual) { e.stopPropagation(); if (controls) controls.enabled = false; startDrag(truck.id); } }}
+        onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = truck.status === 'waiting' && !truck.manual ? 'grab' : 'pointer'; }}
         onPointerOut={() => { document.body.style.cursor = ''; }}>
         <group visible={!dragging}>
           <TruckModel kind={truck.kind} />
         </group>
       </group>
       {selected && <SelectionBox size={[2.6, 2.6, 5.4]} />}
+      {truck.manual && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+          <ringGeometry args={[3.0, 3.4, 40]} />
+          <meshBasicMaterial color="#7c3aed" transparent opacity={0.6} />
+        </mesh>
+      )}
       <Html position={[0, 3.1, 0]} center style={{ pointerEvents: 'none' }} zIndexRange={[20, 0]}>
-        <div className={`flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-semibold shadow ${selected ? 'bg-[#1f4fd6] text-white' : 'bg-white/90 text-slate-700'}`}>
+        <div className={`flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-semibold shadow ${truck.manual ? 'bg-violet-600 text-white' : selected ? 'bg-[#1f4fd6] text-white' : 'bg-white/90 text-slate-700'}`}>
           {truck.rush && <span className="rounded bg-red-500 px-1 text-white">RUSH</span>}
           {truck.id}
           <span className={`rounded px-1 ${selected ? 'bg-white/20' : 'bg-slate-100'}`}>{label}{truck.status === 'working' ? ` ${truck.done}/${truck.total}` : ''}</span>
         </div>
       </Html>
-      {truck.status === 'waiting' && !dragging && (
+      {truck.status === 'waiting' && !dragging && !truck.manual && (
         <Html position={[0, 0.2, 3.2]} center style={{ pointerEvents: 'none' }}>
-          <div className="whitespace-nowrap text-[9px] font-medium text-slate-500">drag to a dock ↗</div>
+          <div className="whitespace-nowrap text-[9px] font-medium text-slate-500">{t('dragHint')}</div>
         </Html>
       )}
     </group>
@@ -320,6 +330,7 @@ function ForkliftEntity({ f }: { f: Forklift }) {
 function Storage() {
   const stock = useSim((s) => s.world.stock);
   const capacity = useSim((s) => s.world.warehouse.capacity);
+  const t = useT();
   const cells = STORAGE_COLS * STORAGE_ROWS;
   const ratio = stock / capacity;
   return (
@@ -337,7 +348,7 @@ function Storage() {
         );
       })}
       <Html position={[14.2, 0.1, 5.2]} center style={{ pointerEvents: 'none' }}>
-        <div className="whitespace-nowrap rounded bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-slate-500">STORAGE · {stock} PALLETS</div>
+        <div className="whitespace-nowrap rounded bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-slate-500">{t('storageLbl', { n: stock })}</div>
       </Html>
     </group>
   );
@@ -385,6 +396,9 @@ function SelectedPin() {
 function CameraRig() {
   const cam = useSim((s) => s.cam);
   const dragging = useSim((s) => !!s.drag);
+  const drivePos = useSim((s) => (s.driving ? s.world.trucks.find((x) => x.id === s.driving)?.pos ?? null : null));
+  const followRef = useRef<Vec | null>(null);
+  followRef.current = drivePos;
   const controls = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
   const goal = useRef<{ target: THREE.Vector3; pos: THREE.Vector3; zoom: number } | null>(null);
@@ -408,8 +422,19 @@ function CameraRig() {
   }, [cam, camera]);
 
   useFrame((_, dt) => {
-    const g = goal.current;
     const c = controls.current;
+    const f = followRef.current;
+    if (c && f) {
+      // follow the truck being driven, keep the current viewing angle & zoom
+      const offset = camera.position.clone().sub(c.target);
+      const k = 1 - Math.exp(-dt * 4);
+      c.target.lerp(new THREE.Vector3(f[0], 0, f[1]), k);
+      camera.position.copy(c.target.clone().add(offset));
+      c.update();
+      goal.current = null;
+      return;
+    }
+    const g = goal.current;
     if (!g || !c) return;
     const k = 1 - Math.exp(-dt * 6);
     const ortho = camera as THREE.OrthographicCamera;

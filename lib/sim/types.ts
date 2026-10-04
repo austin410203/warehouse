@@ -34,6 +34,7 @@ export interface Truck {
   shipmentId: string;
   delayed: boolean;
   rush: boolean;
+  manual?: boolean; // player is driving this truck
 }
 
 export type DockKind = 'in' | 'out';
@@ -83,6 +84,7 @@ export interface Shipment {
   dueAt: number; // sim seconds
   completedAt: number | null;
   onTime: boolean | null;
+  source?: 'seed' | 'auto' | 'manual' | 'excel' | 'rush';
 }
 
 export type EventKind = 'rush' | 'fault' | 'delay' | 'info' | 'success' | 'warn';
@@ -91,14 +93,15 @@ export interface GameEvent {
   id: number;
   t: number;
   kind: EventKind;
-  msg: string;
+  code: string; // i18n key, rendered in the UI language
+  params?: Record<string, string | number | boolean>;
   ref?: { type: SelectionType; id: string };
 }
 
 export type SelectionType = 'truck' | 'forklift' | 'dock' | 'shipment';
 
 export interface World {
-  warehouse: { id: string; name: string; capacity: number };
+  warehouse: { id: string; name: string; nameZh?: string; city?: string; capacity: number };
   t: number;
   stock: number;
   stockStart: number;
@@ -119,4 +122,5 @@ export interface SimSettings {
   autoDock: boolean;
   autoForklift: boolean;
   randomEvents: boolean;
+  autoSpawn: boolean; // randomly generate truck arrivals
 }

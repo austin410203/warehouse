@@ -1,7 +1,7 @@
 // Pure simulation engine. `step` advances a World by dt sim-seconds.
 // It runs in the browser (Demo mode) or in a Route Handler (DB mode) — same code.
 import { EXIT, GATE, YARD_SLOTS, fromClock, storageCell, toClock } from './layout';
-import type { Dock, EventKind, Forklift, GameEvent, SimSettings, Truck, Vec, World } from './types';
+import type { Dock, EventKind, Forklift, GameEvent, Shipment, SimSettings, Truck, TruckKind, Vec, World } from './types';
 
 const TRUCK_SPEED = 6;
 const FORKLIFT_SPEED = 2.6;
@@ -13,7 +13,7 @@ const DRIVERS = ['Sam Chen', 'Mia Lin', 'Leo Wang', 'Ivy Huang', 'Noah Tsai', 'E
 const CARRIERS = ['WareTrack Freight', 'Northline Logistics', 'Swift Haul'];
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
-const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
+export const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
 
 export function cloneWorld(w: World): World {
   return structuredClone(w);
@@ -27,8 +27,9 @@ function moveToward(pos: Vec, target: Vec, dist: number): { pos: Vec; heading: n
   return { pos: [pos[0] + (dx / d) * dist, pos[1] + (dz / d) * dist], heading: Math.atan2(dx, dz), arrived: false };
 }
 
-export function log(w: World, kind: EventKind, msg: string, ref?: GameEvent['ref']) {
-  w.events.unshift({ id: ++w.seq, t: w.t, kind, msg, ref });
+type Params = GameEvent['params'];
+export function log(w: World, kind: EventKind, code: string, params?: Params, ref?: GameEvent['ref']) {
+  w.events.unshift({ id: ++w.seq, t: w.t, kind, code, params, ref });
   if (w.events.length > 60) w.events.length = 60;
 }
 
@@ -41,30 +42,33 @@ const truckPickupPoint = (dock: Dock): Vec => [dock.pos[0] + 1.8, dock.pos[1] - 
 
 // ───────────────────────── player actions ─────────────────────────
 
-export function assignTruckToDock(w: World, truckId: string, dockId: string): { ok: boolean; msg: string } {
+export interface ActionResult { ok: boolean; code: string; params?: Params }
+
+export function assignTruckToDock(w: World, truckId: string, dockId: string): ActionResult {
   const truck = findTruck(w, truckId);
   const dock = findDock(w, dockId);
-  if (!truck || !dock) return { ok: false, msg: 'Unknown truck or dock' };
-  if (truck.status !== 'waiting') return { ok: false, msg: `${truck.id} is not waiting in the yard` };
-  if (dock.status === 'fault') return { ok: false, msg: `${dock.name} is out of service` };
-  if (dock.status === 'occupied') return { ok: false, msg: `${dock.name} is occupied` };
+  if (!truck || !dock) return { ok: false, code: 'errUnknown' };
+  if (truck.status !== 'waiting') return { ok: false, code: 'errNotWaiting', params: { truck: truck.id } };
+  if (dock.status === 'fault') return { ok: false, code: 'errDockFault', params: { dock: dock.name } };
+  if (dock.status === 'occupied') return { ok: false, code: 'errDockOccupied', params: { dock: dock.name } };
   if ((truck.kind === 'inbound') !== (dock.kind === 'in'))
-    return { ok: false, msg: `${truck.kind === 'inbound' ? 'Inbound' : 'Outbound'} trucks need an ${truck.kind === 'inbound' ? 'In' : 'Out'} dock` };
+    return { ok: false, code: truck.kind === 'inbound' ? 'errNeedIn' : 'errNeedOut' };
   dock.status = 'occupied';
   dock.truckId = truck.id;
   truck.dockId = dock.id;
   truck.status = 'docking';
   truck.target = [dock.pos[0], dock.pos[1]];
   truck.yardSlot = null;
-  log(w, 'info', `${truck.id} assigned to ${dock.name}`, { type: 'truck', id: truck.id });
-  return { ok: true, msg: `${truck.id} → ${dock.name}` };
+  truck.manual = false;
+  log(w, 'info', 'assigned', { truck: truck.id, dock: dock.name }, { type: 'truck', id: truck.id });
+  return { ok: true, code: 'assignedShort', params: { truck: truck.id, dock: dock.name } };
 }
 
 export function pinForklift(w: World, forkliftId: string, truckId: string | null) {
   const f = w.forklifts.find((x) => x.id === forkliftId);
   if (!f) return;
   f.pinnedTruckId = truckId;
-  log(w, 'info', truckId ? `${f.id} dedicated to ${truckId}` : `${f.id} back to auto dispatch`, { type: 'forklift', id: f.id });
+  log(w, 'info', truckId ? 'forkliftPinned' : 'forkliftAuto', { f: f.id, truck: truckId ?? '' }, { type: 'forklift', id: f.id });
 }
 
 export function repairDock(w: World, dockId: string) {
@@ -72,20 +76,33 @@ export function repairDock(w: World, dockId: string) {
   if (!d || d.status !== 'fault') return;
   d.faultUntil = Math.min(d.faultUntil, w.t + 6);
   w.score -= 20;
-  log(w, 'info', `Maintenance crew dispatched to ${d.name} (−20 pts)`, { type: 'dock', id: d.id });
+  log(w, 'info', 'repairDispatched', { dock: d.name }, { type: 'dock', id: d.id });
 }
 
 // ───────────────────────── spawning & events ─────────────────────────
 
-export function spawnTruck(w: World, kind: Truck['kind'], opts: { rush?: boolean; eta?: number } = {}): Truck {
-  const n = 2240 + w.seq;
-  const id = kind === 'inbound' ? `TRK-${n}` : `TRK-${n + 900}`;
-  const shipmentId = `SHP-${78500 + w.seq}`;
-  const eta = opts.eta ?? rand(15, 45);
-  const total = kind === 'inbound' ? Math.round(rand(4, 8)) : Math.round(rand(3, 6));
+export interface SpawnOpts {
+  rush?: boolean; eta?: number; total?: number; customer?: string; destination?: string; dueAt?: number;
+  plate?: string; driver?: string; carrier?: string; source?: Shipment['source'];
+}
+
+const idBase = (w: World) => (w.warehouse.id === 'WH-04' ? 2240 : (parseInt(w.warehouse.id.slice(3), 10) || 9) * 1000 + 140);
+const uniqueId = (w: World, prefix: string, n: number, taken: (id: string) => boolean) => {
+  let id = `${prefix}-${n}`;
+  while (taken(id)) id = `${prefix}-${++n}`;
+  return id;
+};
+
+export function spawnTruck(w: World, kind: TruckKind, opts: SpawnOpts = {}): Truck {
+  w.seq += 1;
+  const base = idBase(w) + w.seq;
+  const id = uniqueId(w, 'TRK', kind === 'inbound' ? base : base + 900, (x) => w.trucks.some((t) => t.id === x));
+  const shipmentId = uniqueId(w, 'SHP', idBase(w) * 30 + w.seq, (x) => w.shipments.some((s) => s.id === x));
+  const eta = Math.max(0.5, opts.eta ?? rand(15, 45));
+  const total = Math.max(1, Math.round(opts.total ?? (kind === 'inbound' ? rand(4, 8) : rand(3, 6))));
   const truck: Truck = {
-    id, plate: `${String.fromCharCode(65 + (w.seq % 26))}${String.fromCharCode(75 + (w.seq % 10))}Y-${1000 + Math.floor(Math.random() * 8999)}`,
-    driver: pick(DRIVERS), carrier: pick(CARRIERS), kind, status: 'transit', dockId: null,
+    id, plate: opts.plate || `${String.fromCharCode(65 + (w.seq % 26))}${String.fromCharCode(75 + (w.seq % 10))}Y-${1000 + Math.floor(Math.random() * 8999)}`,
+    driver: opts.driver || pick(DRIVERS), carrier: opts.carrier || pick(CARRIERS), kind, status: 'transit', dockId: null,
     total, done: 0, inFlight: 0, tons: +(total * rand(0.3, 0.45)).toFixed(1), eta, waitingSince: 0,
     pos: [...GATE] as Vec, heading: Math.PI / 2, target: null, yardSlot: null, shipmentId, delayed: false, rush: !!opts.rush,
   };
@@ -93,29 +110,106 @@ export function spawnTruck(w: World, kind: Truck['kind'], opts: { rush?: boolean
   const window = (opts.rush ? 60 : 130) + eta;
   w.trucks.push(truck);
   w.shipments.push({
-    id: shipmentId, customer: pick(CUSTOMERS), truckId: id, kind,
-    destination: kind === 'inbound' ? `${w.warehouse.id} ${w.warehouse.name}` : `${pick(CUSTOMERS)} DC`,
+    id: shipmentId, customer: opts.customer || pick(CUSTOMERS), truckId: id, kind, source: opts.source ?? 'auto',
+    destination: opts.destination || (kind === 'inbound' ? `${w.warehouse.id} ${w.warehouse.name}` : `${pick(CUSTOMERS)} DC`),
     stages: (kind === 'inbound'
       ? [['Order Confirmed', now - 9000], ['Picked', now - 5200], ['Loaded', now - 2800], ['In Transit', now - 900], ['Unloading', null]]
       : [['Order Confirmed', now - 4000], ['Picked', now - 1500], ['Staged', null], ['Loading', null], ['Departed', null]]
     ).map(([label, clock]) => ({ label: label as string, clock: clock as number | null })),
-    dueAt: w.t + window, completedAt: null, onTime: null,
+    dueAt: opts.dueAt ?? w.t + window, completedAt: null, onTime: null,
   });
   return truck;
+}
+
+// ───────────────────────── orders (CRUD) ─────────────────────────
+
+export interface OrderInput {
+  kind: TruckKind; customer: string; pallets: number; etaMin: number; dueClock?: number | null;
+  rush?: boolean; destination?: string; plate?: string; driver?: string; carrier?: string; source?: Shipment['source'];
+}
+
+/** Create an order: a shipment plus the truck that will carry it. `etaMin` is in clock minutes. */
+export function createOrder(w: World, o: OrderInput): Truck {
+  const eta = (Math.max(0, o.etaMin) * 60) / 10; // clock minutes → sim seconds (1 sim s = 10 clock s)
+  const t = spawnTruck(w, o.kind, {
+    rush: o.rush, eta: eta || 0.5, total: o.pallets, customer: o.customer, destination: o.destination,
+    dueAt: o.dueClock != null ? fromClock(o.dueClock) : undefined, plate: o.plate, driver: o.driver, carrier: o.carrier,
+    source: o.source ?? 'manual',
+  });
+  return t;
+}
+
+/** Delete an order: removes the shipment and its truck, releasing dock & forklifts. */
+export function deleteOrder(w: World, shipmentId: string): boolean {
+  const s = w.shipments.find((x) => x.id === shipmentId);
+  if (!s) return false;
+  const t = w.trucks.find((x) => x.id === s.truckId);
+  if (t) {
+    const d = findDock(w, t.dockId);
+    if (d) { d.truckId = null; if (d.status === 'occupied') d.status = 'available'; }
+    for (const f of w.forklifts) {
+      if (f.truckId === t.id) {
+        if (f.carrying && t.kind === 'outbound') w.stock += 1; // return the pallet to storage
+        f.status = 'idle'; f.truckId = null; f.carrying = false; f.target = null;
+      }
+      if (f.pinnedTruckId === t.id) f.pinnedTruckId = null;
+    }
+    w.trucks = w.trucks.filter((x) => x.id !== t.id);
+  }
+  w.shipments = w.shipments.filter((x) => x.id !== shipmentId);
+  log(w, 'warn', 'orderDeleted', { ship: shipmentId });
+  return true;
+}
+
+// ───────────────────────── manual driving ─────────────────────────
+
+export const canDrive = (t: Truck) => ['waiting', 'arriving', 'docking'].includes(t.status) || !!t.manual;
+
+export function startManual(w: World, truckId: string): boolean {
+  const t = findTruck(w, truckId);
+  if (!t || !canDrive(t)) return false;
+  if (t.status === 'docking') {
+    const d = findDock(w, t.dockId);
+    if (d) { d.truckId = null; if (d.status === 'occupied') d.status = 'available'; }
+    t.dockId = null;
+  }
+  t.status = 'waiting';
+  t.target = null;
+  t.manual = true;
+  t.waitingSince = w.t;
+  return true;
+}
+
+/** Release manual control. If the truck stopped on a compatible free dock pad, it docks there. */
+export function stopManual(w: World, truckId: string): ActionResult {
+  const t = findTruck(w, truckId);
+  if (!t) return { ok: false, code: 'errUnknown' };
+  t.manual = false;
+  t.waitingSince = w.t + 1e6; // don't let auto-dock grab it right away
+  const near = w.docks
+    .map((d) => ({ d, dist: Math.hypot(d.pos[0] - t.pos[0], d.pos[1] - t.pos[1]) }))
+    .filter((x) => x.dist < 3)
+    .sort((a, b) => a.dist - b.dist)[0];
+  if (near) {
+    const r = assignTruckToDock(w, t.id, near.d.id);
+    if (r.ok) w.score += 15;
+    return r;
+  }
+  return { ok: true, code: 'driveParked', params: { truck: t.id } };
 }
 
 function randomEvent(w: World) {
   const roll = Math.random();
   if (roll < 0.38) {
-    const t = spawnTruck(w, 'outbound', { rush: true, eta: rand(6, 12) });
-    log(w, 'rush', `Rush order! ${t.id} (outbound, ${t.total} pallets) arriving — tight deadline`, { type: 'truck', id: t.id });
+    const t = spawnTruck(w, 'outbound', { rush: true, eta: rand(6, 12), source: 'rush' });
+    log(w, 'rush', 'rush', { truck: t.id, n: t.total }, { type: 'truck', id: t.id });
   } else if (roll < 0.7) {
     const candidates = w.docks.filter((d) => d.status === 'available');
     if (!candidates.length) return;
     const d = pick(candidates);
     d.status = 'fault';
     d.faultUntil = w.t + rand(40, 70);
-    log(w, 'fault', `${d.name} door fault — dock out of service`, { type: 'dock', id: d.id });
+    log(w, 'fault', 'fault', { dock: d.name }, { type: 'dock', id: d.id });
   } else {
     const transit = w.trucks.filter((t) => t.status === 'transit');
     if (!transit.length) return;
@@ -123,7 +217,7 @@ function randomEvent(w: World) {
     const extra = Math.round(rand(25, 50));
     t.eta += extra;
     t.delayed = true;
-    log(w, 'delay', `${t.id} delayed by traffic (+${extra * 10 / 60 | 0} min)`, { type: 'truck', id: t.id });
+    log(w, 'delay', 'delay', { truck: t.id, min: (extra * 10 / 60) | 0 }, { type: 'truck', id: t.id });
   }
 }
 
@@ -139,15 +233,16 @@ function finishShipment(w: World, truck: Truck) {
   if (s.onTime) {
     w.onTimeCount += 1;
     w.score += truck.rush ? 250 : 100;
-    log(w, 'success', `${s.id} completed on time${truck.rush ? ' · rush bonus' : ''} (+${truck.rush ? 250 : 100})`, { type: 'shipment', id: s.id });
+    log(w, 'success', truck.rush ? 'doneRush' : 'doneOnTime', { ship: s.id }, { type: 'shipment', id: s.id });
   } else {
     w.score -= 50;
-    log(w, 'warn', `${s.id} completed late (−50)`, { type: 'shipment', id: s.id });
+    log(w, 'warn', 'doneLate', { ship: s.id }, { type: 'shipment', id: s.id });
   }
 }
 
 function stepTrucks(w: World, dt: number, settings: SimSettings) {
   for (const truck of w.trucks) {
+    if (truck.manual) continue; // player is driving
     const s = w.shipments.find((x) => x.id === truck.shipmentId);
     switch (truck.status) {
       case 'transit': {
@@ -160,7 +255,7 @@ function stepTrucks(w: World, dt: number, settings: SimSettings) {
           truck.pos = [...GATE] as Vec;
           truck.target = [...YARD_SLOTS[slot]] as Vec;
           if (s && truck.kind === 'outbound') s.stages[2].clock = toClock(w.t);
-          log(w, 'info', `${truck.id} arrived at gate${truck.rush ? ' (RUSH)' : ''}`, { type: 'truck', id: truck.id });
+          log(w, 'info', 'arrived', { truck: truck.id, rush: truck.rush }, { type: 'truck', id: truck.id });
         }
         break;
       }
@@ -183,7 +278,7 @@ function stepTrucks(w: World, dt: number, settings: SimSettings) {
           else if (truck.status === 'docking') {
             truck.status = 'working'; truck.heading = 0; truck.target = null;
             if (s && truck.kind === 'outbound') s.stages[3].clock = toClock(w.t);
-            log(w, 'info', `${truck.id} docked · ${truck.kind === 'inbound' ? 'unloading' : 'loading'} started`, { type: 'truck', id: truck.id });
+            log(w, 'info', truck.kind === 'inbound' ? 'dockedUnload' : 'dockedLoad', { truck: truck.id }, { type: 'truck', id: truck.id });
           } else { truck.status = 'departed'; truck.target = null; }
         }
         break;
@@ -305,15 +400,15 @@ export function step(w: World, dt: number, settings: SimSettings): World {
     for (const d of w.docks) {
       if (d.status === 'fault' && w.t >= d.faultUntil) {
         d.status = d.truckId ? 'occupied' : 'available';
-        log(w, 'info', `${d.name} repaired and back in service`, { type: 'dock', id: d.id });
+        log(w, 'info', 'repaired', { dock: d.name }, { type: 'dock', id: d.id });
       }
     }
 
-    if (w.t >= w.nextSpawn) {
+    if (settings.autoSpawn && w.t >= w.nextSpawn) {
       const kind = Math.random() < 0.72 ? 'inbound' : 'outbound';
-      if (w.trucks.length < 8) {
+      if (w.trucks.length < 10) {
         const t = spawnTruck(w, kind);
-        log(w, 'info', `${t.id} dispatched (${kind}, ETA ${fmtEta(t.eta)})`, { type: 'truck', id: t.id });
+        log(w, 'info', kind === 'inbound' ? 'dispatchedIn' : 'dispatchedOut', { truck: t.id, min: Math.round((t.eta * 10) / 60) }, { type: 'truck', id: t.id });
       }
       w.nextSpawn = w.t + rand(30, 55);
     }

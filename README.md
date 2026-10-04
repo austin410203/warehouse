@@ -16,6 +16,13 @@ Next.js 15 + React Three Fiber prototype of an isometric warehouse digital twin.
 - Scoring: +100 on-time, +250 on-time rush, −50 late
 - Camera: zoom, rotate, home, search → auto-focus (left-drag pan, right-drag rotate, wheel zoom)
 
+### v0.2
+- **中文 / English toggle** (top bar), remembered per browser; all UI, statuses and event log are bilingual
+- **3 switchable warehouses** — WH-04 南田轉運倉 (3 in / 1 out), WH-01 桃園機場物流中心 (4 in / 2 out), WH-07 台中配送中心 (2 in / 2 out); all keep simulating in the background
+- **Orders panel**: create orders (warehouse, type, customer, pallets, ETA, due time, rush) and delete them (frees dock & forklifts)
+- **Excel import** (.xlsx / .xls / .csv): each row becomes an order + truck in the named warehouse; Chinese or English headers; "replace" mode clears queued orders and stops random trucks so the sim follows your file. Template download included
+- **Manual driving**: select a waiting / arriving / docking truck → *Drive manually*; WASD / arrow keys or on-screen pad, camera follows; stop on a dock pad and press Esc to dock (+15 pts)
+
 ## Run
 ```bash
 npm install

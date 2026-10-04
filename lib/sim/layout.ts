@@ -24,8 +24,20 @@ export const GATE: Vec = [-24, 12];
 export const EXIT: Vec = [24, 12];
 export const ROAD_Z = 12;
 export const YARD_SLOTS: Vec[] = [
-  [-17, 6], [-13, 6], [-17, 1], [-13, 1],
+  [-17, 6], [-13.5, 6], [-17, 0.5], [-13.5, 0.5], [-20.5, 6], [-20.5, 0.5],
 ];
+
+/** Dock positions along the building wall for a warehouse with nIn inbound + nOut outbound docks. */
+export function dockLayout(nIn: number, nOut: number) {
+  const n = nIn + nOut;
+  const gap = n > 5 ? 3.6 : 5;
+  const start = 8 - (n - 1) * gap; // keep docks west of the storage zone
+  return Array.from({ length: n }, (_, i) => {
+    const kind = i < nIn ? ('in' as const) : ('out' as const);
+    const num = kind === 'in' ? i + 1 : i - nIn + 1;
+    return { id: `${kind}${num}`, name: `${kind === 'in' ? 'In' : 'Out'} ${num}`, kind, x: +(start + i * gap).toFixed(2) };
+  });
+}
 export const STORAGE_ORIGIN: Vec = [10, 0.5];
 export const STORAGE_COLS = 6;
 export const STORAGE_ROWS = 3;

@@ -3,7 +3,7 @@ import { getDb, loadWorld, saveWorld, type Db } from '../db/repository';
 import { step } from './sim/engine';
 import type { SimSettings, World } from './sim/types';
 
-const SETTINGS: SimSettings = { autoDock: true, autoForklift: true, randomEvents: true };
+const SETTINGS: SimSettings = { autoDock: true, autoForklift: true, randomEvents: true, autoSpawn: true };
 const MAX_CATCHUP = 30; // sim seconds advanced per request at most
 
 export const dbMissing = () =>

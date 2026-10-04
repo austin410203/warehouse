@@ -3,9 +3,9 @@ import dynamic from 'next/dynamic';
 import { useEffect } from 'react';
 import { useSim } from '@/lib/store';
 import type { World } from '@/lib/sim/types';
-import { CameraControls, DetailPanel, DockList, EventFeed, KpiRow, PausedBadge, ShipmentTimeline, Toast, TopBar } from './ui/Hud';
+import { CameraControls, DetailPanel, DockList, DriveController, EventFeed, KpiRow, OrdersPanel, PausedBadge, ShipmentTimeline, Toast, TopBar } from './ui/Hud';
 
-const Scene = dynamic(() => import('./scene/Scene'), { ssr: false, loading: () => <div className="grid h-full place-items-center text-slate-400">Loading 3D scene…</div> });
+const Scene = dynamic(() => import('./scene/Scene'), { ssr: false, loading: () => <div className="grid h-full place-items-center text-slate-400">Loading 3D scene… 載入中</div> });
 
 /** Demo mode: advance the front-end simulation at 10 Hz × speed.
  *  DB mode: subscribe to the server via SSE (falls back to 2 s polling). */
@@ -39,8 +39,8 @@ export default function App() {
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#dbe4f3] text-slate-800">
       <Driver />
-      <div className="absolute inset-0"><Scene /></div>
-      <div className="pointer-events-none absolute inset-0 flex flex-col">
+      <div className="absolute inset-0 isolate z-0"><Scene /></div>
+      <div className="pointer-events-none absolute inset-0 z-10 flex flex-col">
         <TopBar />
         <div className="relative flex-1">
           <div className="absolute left-4 top-4"><KpiRow /></div>
@@ -51,9 +51,11 @@ export default function App() {
           </div>
           <div className="absolute bottom-4 left-4 right-[470px]"><ShipmentTimeline /></div>
           <div className="absolute bottom-4 right-4"><DockList /></div>
+          <DriveController />
           <Toast />
           <PausedBadge />
         </div>
+        <OrdersPanel />
       </div>
     </div>
   );

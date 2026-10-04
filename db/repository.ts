@@ -7,6 +7,12 @@ import type { World } from '../lib/sim/types';
 
 export const WAREHOUSE_ID = 'WH-04';
 
+// events.msg stores {code, params} as JSON so the UI can render it in any language
+function parseMsg(msg: string): { code: string; params?: Record<string, string | number | boolean> } {
+  try { const j = JSON.parse(msg); if (j && typeof j.code === 'string') return j; } catch {}
+  return { code: 'raw', params: { text: msg } };
+}
+
 export function getDb() {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
@@ -50,7 +56,7 @@ export async function loadWorld(db: Db, warehouseId = WAREHOUSE_ID): Promise<{ w
       carrying: f.carrying, truckId: f.truckId, pinnedTruckId: f.pinnedTruckId, busyUntil: f.busyUntil, next: 'pickup', moved: f.moved,
     })),
     events: evRows.map((e) => ({
-      id: e.seq, t: e.t, kind: e.kind, msg: e.msg,
+      id: e.seq, t: e.t, kind: e.kind, ...parseMsg(e.msg),
       ref: e.refType && e.refId ? { type: e.refType as 'truck', id: e.refId } : undefined,
     })),
   };
@@ -102,7 +108,7 @@ export async function saveWorld(db: Db, w: World, expectedVersion: number | null
       targetZ: t.target?.[1] ?? null, yardSlot: t.yardSlot, shipmentId: t.shipmentId, delayed: t.delayed, rush: t.rush,
     })))] : []),
     ...(newEvents.length ? [db.insert(s.events).values(newEvents.map((e) => ({
-      warehouseId: id, seq: e.id, t: e.t, kind: e.kind, msg: e.msg, refType: e.ref?.type ?? null, refId: e.ref?.id ?? null,
+      warehouseId: id, seq: e.id, t: e.t, kind: e.kind, msg: JSON.stringify({ code: e.code, params: e.params }), refType: e.ref?.type ?? null, refId: e.ref?.id ?? null,
     })))] : []),
     db.insert(s.stockLevels).values({ warehouseId: id, pallets: w.stock })
       .onConflictDoUpdate({ target: s.stockLevels.warehouseId, set: { pallets: w.stock } }),
